@@ -12,7 +12,9 @@ Using:
 Make Instructions:
 
 ..../libigl
+
 ..../spectra-0.5.0
+
 ..../LinearModalAnalysis3dMassSpring
 
 Go into 
