@@ -17,7 +17,8 @@ Make Instructions:
 
 ..../LinearModalAnalysis3dMassSpring
 
-Go into 
+Go into
+
  LinearModalAnalysis3dMassSpring
 
 $ mkdir build
