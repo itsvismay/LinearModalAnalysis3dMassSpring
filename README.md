@@ -22,6 +22,10 @@ Go into
  LinearModalAnalysis3dMassSpring
 
 $ mkdir build
+
 $ cd build
+
 $ cmake ..
+
 $ make
+
