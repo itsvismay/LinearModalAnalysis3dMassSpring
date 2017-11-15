@@ -9,4 +9,16 @@ Using:
  - Spectra for the generalized eigenvalue solve
  - LibIGL for graphics
 
+Make Instructions:
 
+..../libigl
+..../spectra-0.5.0
+..../LinearModalAnalysis3dMassSpring
+
+Go into 
+ LinearModalAnalysis3dMassSpring
+
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
