@@ -15,11 +15,11 @@ Make Instructions:
 
 ..../spectra-0.5.0
 
-..../LinearModalAnalysis3dMassSpring
+..../MassSpringModalAnalysis
 
 Go into
 
- LinearModalAnalysis3dMassSpring
+ MassSpringModalAnalysis
 
 $ mkdir build
 
