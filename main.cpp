@@ -7,7 +7,10 @@
 #include<Eigen/IterativeLinearSolvers>
 #include <Eigen/SparseCore>
 #include<Eigen/SparseQR>
+#include <../../spectra-0.5.0/include/MatOp/SparseGenMatProd.h>
+#include <../../spectra-0.5.0/include/MatOp/SparseCholesky.h>
 #include <../../spectra-0.5.0/include/GenEigsSolver.h>
+#include <../../spectra-0.5.0/include/SymGEigsSolver.h>
 
 using namespace std;
 using namespace Eigen;
@@ -28,6 +31,7 @@ struct Spring
     k = stiffness;
   }
 };
+
 class Simulation
 {
 public:
@@ -39,19 +43,22 @@ public:
   SparseMatrix<double> Identity;
 
   //System Setup Variables
-  SparseMatrix<double> InvM;
-  SparseMatrix<double> M;
+  SparseMatrix<double> InvM; //Inverse Mass Matrix
+  SparseMatrix<double> M; //Mass Matrix
+  MatrixXd V; //Eigenvectors
+  VectorXd D; //Eigenvalues
   vector<Spring> springs;
   MatrixXd Verts;
 
   //Physics Constants
   double g = 9.8; //gravity (m/ s^2)
   double h = 0.01; //timestep (s)
+  double t = 0; //total time
 
 
   Simulation();
   void update();
-  void linearmodes();
+  void drawlinearmodes();
 
   void getEnergy(double& return_E);
   void getForceVector(VectorXd& return_f, VectorXd& u);
@@ -60,7 +67,43 @@ public:
   //Helper functions
   void VToX(MatrixXd& V, VectorXd& x);
   void XToV(MatrixXd& V, VectorXd& x);
+  void generalizedEigenSolve( int reducedSize);
 };
+
+void Simulation::generalizedEigenSolve(int reducedSize)
+{
+  //DOCUMENTATION HERE
+  //https://spectralib.org/doc/classspectra_1_1symgeigssolver_3_01scalar_00_01selectionrule_00_01optype_00_01boptype_00_01geigs__cholesky_01_4
+  //and here
+  //https://github.com/dilevin/GAUSS/blob/a7e924639966728d16702ae19f4149c7baeaa600/src/Core/include/UtilitiesEigen.h#L99
+
+  this->VToX(this->Verts, this->x);
+  this->getStiffnessMatrix(this->gradf, this->x);
+
+  Spectra::SparseGenMatProd<double> Aop(this->gradf);
+  Spectra::SparseCholesky<double> Bop(this->M);
+
+  Spectra::SymGEigsSolver<double, Spectra::SMALLEST_MAGN, Spectra::SparseGenMatProd<double>, Spectra::SparseCholesky<double>, Spectra::GEIGS_CHOLESKY>
+  geigs(&Aop, &Bop, reducedSize, M.rows());
+
+  geigs.init();
+  int nconv = geigs.compute();
+
+  if(geigs.info() == Spectra::SUCCESSFUL)
+  {
+      this->D = geigs.eigenvalues();
+      this->V = geigs.eigenvectors();
+  }
+  else
+  {
+      cout<<"EIG SOLVE FAILED: "<<endl<<geigs.info()<<endl;
+      exit(0);
+  }
+
+  cout<<this->D<<endl;
+  // cout<<this->V<<endl;
+
+}
 
 void Simulation::getEnergy(double& return_E)
 {
@@ -217,6 +260,7 @@ void Simulation::update()
   this->v = (x_k - this->x)/this->h;
   this->x = x_k;
   this->XToV(this->Verts, this->x);
+  this->t +=1;
 
 
   // //Verlet
@@ -335,11 +379,29 @@ Simulation::Simulation()
   this->Identity.setIdentity();
   //-------------------------
 
+  //Do Linear Modal Analysis
+  // K*x = lambda*M*x
+  //-------------------------
+  int getThisManyBasisVectors = 20;
+  this->generalizedEigenSolve(getThisManyBasisVectors);
+  // cout<<"Check that this is Identity"<<endl;
+  // cout<<this->V.transpose()*this->M*this->V<<endl;
+  //-------------------------
+
 }
 
+void Simulation::drawlinearmodes()
+{
+  int drawBasisVector = 9+4;
+  VectorXd u = this->x + this->V.col(drawBasisVector)*sin(sqrt(fabs(this->D(drawBasisVector)))*this->t*this->h);
+  this->XToV(this->Verts, u);
+  // cout<<Sim.Verts<<endl;
+}
 
+//INITIALIZE SIMULATION
 Simulation Sim = Simulation();
-bool drawLoop(igl::viewer::Viewer& viewer)
+
+bool drawSim(igl::viewer::Viewer& viewer)
 {
   viewer.data.clear();
 
@@ -349,18 +411,41 @@ bool drawLoop(igl::viewer::Viewer& viewer)
   {
     viewer.data.add_edges(Sim.Verts.row(Sim.springs[i].first), Sim.Verts.row(Sim.springs[i].second), RowVector3d(0, 1, 0));
   }
+}
 
-  // viewer.data.add_edges(RowVector3d(0,0,0), RowVector3d(2,0,0), RowVector3d(1,0,0));
-	// viewer.data.add_edges(RowVector3d(0,0,0), RowVector3d(0,4,0), RowVector3d(0,1,0));
-  // viewer.data.add_edges(RowVector3d(0,0,0), RowVector3d(0,0,6), RowVector3d(0,0,1));
+bool drawBasis(igl::viewer::Viewer& viewer)
+{
+  viewer.data.clear();
+
+  Sim.drawlinearmodes();
+
+  Sim.t+=1;
+  // cout<<Sim.t<<endl;
+
+  viewer.data.add_points(Sim.Verts, RowVector3d(1,0,0));
+  for (int i=0; i<Sim.springs.size(); ++i)
+  {
+    viewer.data.add_edges(Sim.Verts.row(Sim.springs[i].first), Sim.Verts.row(Sim.springs[i].second), RowVector3d(0, 1, 0));
+  }
+
 }
 
 int main(int argc, char *argv[])
 {
+  int linearModalBasis = 1;
 
-  // Plot the mesh
   igl::viewer::Viewer viewer;
   viewer.core.is_animating = true;
-  viewer.callback_pre_draw = &drawLoop;
+  if(linearModalBasis == 0)
+  {
+    // Simulate the mesh under gravity
+    viewer.callback_pre_draw = &drawSim;
+
+  }
+  else{
+    viewer.callback_pre_draw = &drawBasis;
+  }
+  //
+
   viewer.launch();
 }
